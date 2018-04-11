@@ -82,7 +82,7 @@ def GroupNormalization(inputs,
         inputs = tf.transpose(inputs, perm=permutation)
         
         old_shape = inputs.get_shape().as_list()
-        new_shape = [old_shape[0], group, old_shape[1] // group] + old_shape[2:]
+        new_shape = tf.TensorShape([old_shape[0], group, old_shape[1] // group] + old_shape[2:])
         inputs = tf.reshape(inputs, shape=new_shape)
 
         outputs = tf.layers.batch_normalization(inputs,
@@ -90,7 +90,8 @@ def GroupNormalization(inputs,
                                                 momentum=momentum,
                                                 epsilon=epsilon,
                                                 training=training)
-        
+
+        old_shape = tf.TensorShape(old_shape)        
         outputs = tf.reshape(outputs, shape=old_shape)
         
         reverse_permutation = permutation[:]
@@ -111,7 +112,7 @@ if __name__ == '__main__':
 
     sess = tf.Session()
     with sess.graph.as_default():
-        features = tf.placeholder(tf.float32, shape, "Input")
+        features = tf.placeholder(tf.float32, (32, None, None, 128), "Input")
         group_norm = GroupNormalization(features, 32, training=training, name="GroupNormalization")
         batch_norm = tf.layers.batch_normalization(features, axis=-1, momentum=0.9, training=training, name="BatchNormalization")
         layer_norm = tf.layers.batch_normalization(features, axis=0, momentum=0.9, training=training, name="LayerNormalization")
