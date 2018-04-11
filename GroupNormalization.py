@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 def GroupNormalization(inputs, 
                        group, 
@@ -60,19 +61,24 @@ def GroupNormalization(inputs,
         ndims = len(input_shape)
         if not isinstance(C_axis, int):
             raise ValueError('`C_axis` must be an integer. Now it is {}'.format(C_axis))
-        for axis in [C_axis, N_axis]:
-            if axis < 0:
-                axis = ndims + axis
-            if axis < 0 or axis >= ndims:
-                raise ValueError('Invalid axis: %d' % axis)
         
+        # Check axis
+        if C_axis < 0:
+            C_axis = ndims + C_axis
+        if C_axis < 0 or C_axis >= ndims:
+            raise ValueError('Invalid axis: %d' % C_axis)
+        if N_axis < 0:
+            N_axis = ndims + N_axis
+        if N_axis < 0 or N_axis >= ndims:
+            raise ValueError('Invalid axis: %d' % N_axis)
+
         # Require C % G == 0
         if input_shape[C_axis] % group != 0 or input_shape[C_axis] < group:
             raise ValueError('`group` should less than C_shape and be dividable '
                              'by C_shape. `group` is %d and C_shape is %d'
                              % (group, input_shape[C_axis]))
 
-        permutation = [N_axis, C_axis] + [i if i != C_axis and i != N_axis for i in range(ndims)]
+        permutation = [N_axis, C_axis] + [i for i in range(ndims) if i != C_axis and i != N_axis]
         inputs = tf.transpose(inputs, perm=permutation)
         
         old_shape = inputs.get_shape().as_list()
@@ -87,9 +93,50 @@ def GroupNormalization(inputs,
         
         outputs = tf.reshape(outputs, shape=old_shape)
         
-        reverse_permutation = permutation
+        reverse_permutation = permutation[:]
         for i, idx in enumerate(permutation):
-            reverse_permutation[idx] = i
+            reverse_permutation[i] = permutation[idx]
+        
         outputs = tf.transpose(outputs, perm=reverse_permutation)
 
         return outputs
+
+
+if __name__ == '__main__':
+    seed = 1234
+    np.random.seed(seed)
+    shape = (32, 256, 256, 128)
+    feature_array = np.random.uniform(size=shape)
+    training = True
+
+    sess = tf.Session()
+    with sess.graph.as_default():
+        features = tf.placeholder(tf.float32, shape, "Input")
+        group_norm = GroupNormalization(features, 32, training=training, name="GroupNormalization")
+        batch_norm = tf.layers.batch_normalization(features, axis=-1, momentum=0.9, training=training, name="BatchNormalization")
+        layer_norm = tf.layers.batch_normalization(features, axis=0, momentum=0.9, training=training, name="LayerNormalization")
+        insta_norm = tf.layers.batch_normalization(features, axis=[0,-1], momentum=0.9, training=training, name="InstanceNormalization")
+
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            train_op = tf.no_op()
+        tf.summary.histogram("input", features)
+        tf.summary.histogram("group_norm", group_norm)
+        tf.summary.histogram("batch_norm", batch_norm)
+        tf.summary.histogram("layer_norm", layer_norm)
+        tf.summary.histogram("insta_norm", insta_norm)
+
+        summary_op = tf.summary.merge_all()
+
+        writer = tf.summary.FileWriter("output/", sess.graph)
+
+        # initialize global variables
+        sess.run(tf.global_variables_initializer())
+
+        # run one step
+        _, summary = sess.run([train_op, summary_op],
+                               feed_dict={features: feature_array})
+        writer.add_summary(summary)
+        writer.close()
+    
+    sess.close()
