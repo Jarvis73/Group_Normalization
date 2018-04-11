@@ -59,6 +59,9 @@ def GroupNormalization(inputs,
     with tf.variable_scope(name, "GroupNorm"):
         input_shape = inputs.get_shape().as_list()
         ndims = len(input_shape)
+        if not ndims in [4, 5]:
+            raise ValueError("Not supported input dimension. Only 3 or 4")
+
         if not isinstance(C_axis, int):
             raise ValueError('`C_axis` must be an integer. Now it is {}'.format(C_axis))
         
@@ -81,8 +84,13 @@ def GroupNormalization(inputs,
         permutation = [N_axis, C_axis] + [i for i in range(ndims) if i != C_axis and i != N_axis]
         inputs = tf.transpose(inputs, perm=permutation)
         
-        old_shape = inputs.get_shape().as_list()
-        new_shape = tf.TensorShape([old_shape[0], group, old_shape[1] // group] + old_shape[2:])
+        old_shape = tf.shape(inputs)
+        old_shape_val = inputs.get_shape().as_list()
+        if ndims == 4:
+            new_shape = [old_shape_val[0], group, old_shape_val[1] // group, old_shape[2], old_shape[3]]
+        elif ndims == 5:
+            new_shape = [old_shape_val[0], group, old_shape_val[1] // group, old_shape[2], old_shape[3], old_shape[4]]
+        
         inputs = tf.reshape(inputs, shape=new_shape)
 
         outputs = tf.layers.batch_normalization(inputs,
@@ -91,7 +99,6 @@ def GroupNormalization(inputs,
                                                 epsilon=epsilon,
                                                 training=training)
 
-        old_shape = tf.TensorShape(old_shape)        
         outputs = tf.reshape(outputs, shape=old_shape)
         
         reverse_permutation = permutation[:]
@@ -106,13 +113,13 @@ def GroupNormalization(inputs,
 if __name__ == '__main__':
     seed = 1234
     np.random.seed(seed)
-    shape = (32, 256, 256, 128)
+    shape = (1, 256, 256, 64)
     feature_array = np.random.uniform(size=shape)
     training = True
 
     sess = tf.Session()
     with sess.graph.as_default():
-        features = tf.placeholder(tf.float32, (32, None, None, 128), "Input")
+        features = tf.placeholder(tf.float32, (1, None, None, 64), "Input")
         group_norm = GroupNormalization(features, 32, training=training, name="GroupNormalization")
         batch_norm = tf.layers.batch_normalization(features, axis=-1, momentum=0.9, training=training, name="BatchNormalization")
         layer_norm = tf.layers.batch_normalization(features, axis=0, momentum=0.9, training=training, name="LayerNormalization")
