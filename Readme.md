@@ -15,3 +15,7 @@ For an input tensor with shape `[N, H, W, C]`:
 For an input tensor with shape `[N, C, C//G, H, W]`:
 
 * If `axis=[0, 1]`, then it becomes `Group norm`.
+
+## Requirements
+
+* tensorflow >= 1.5
